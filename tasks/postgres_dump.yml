@@ -5,8 +5,6 @@
     - name: get postgres path
       shell: echo $HOME
       register: pgpath
-      tags:
-        - skip_ansible_lint
 
     - name: get dump of engine database
       postgresql_db:
@@ -19,4 +17,4 @@
         name: "{{ ovirt_engine_db_dump_dwh_db['DWH_DB_DATABASE'] }}"
         target: "{{ pgpath.stdout }}/dwh.sql"
         state: dump
-      when: ovirt_engine_db_dump_dwh == True
+      when: ovirt_engine_db_dump_dwh
