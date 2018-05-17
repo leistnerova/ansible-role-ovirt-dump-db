@@ -5,11 +5,14 @@
     ovirt_engine_db_dump_engine_db: {}
     ovirt_engine_db_dump_dwh_db: {}
 
-- name: grep engine variables
-  shell: grep "^ENGINE_DB" {{ ovirt_engine_etc_conf_path }}/10-setup-database.conf
-  register: cmd
-  tags:
-    - skip_ansible_lint
+- name: slurp read engine config file
+  slurp:
+    src: "{{ ovirt_engine_etc_conf_path }}/10-setup-database.conf"
+  register: file_content
+
+- name: matching related DB configs
+  set_fact:
+   decoded_content: "{{ ((file_content['content'] | b64decode).split('\n') | select('match', 'ENGINE_DB*') | list) }}"
 
 - name: set facts for engine variables
   set_fact:
@@ -17,17 +20,21 @@
       {{
         ovirt_engine_db_dump_engine_db |
         combine(
-          dict([ [item.partition('=')[0], item.partition('=')[2]|regex_replace('\"', '')] ])
+          dict([ [item.partition('=')[0], item.partition('=')[2] | regex_replace('\"', '')] ])
         )
       }}
-  with_items: "{{ cmd.stdout_lines|list }}"
+  with_items: "{{ decoded_content }}"
 
-- name: grep dwh variables
-  shell: grep "^DWH_DB" {{ ovirt_engine_etc_conf_path }}/10-setup-dwh-database.conf
-  register: cmd
+- name: slurp read dwh config file
+  slurp:
+    src: "{{ ovirt_engine_etc_conf_path }}/10-setup-dwh-database.conf"
+  register: file_content
   when: ovirt_engine_db_dump_dwh == True
-  tags:
-    - skip_ansible_lint
+
+- name: matching related DB configs
+  set_fact:
+   decoded_content: "{{ ((file_content['content'] | b64decode).split('\n') | select('match', 'DWH_DB*') | list) }}"
+  when: ovirt_engine_db_dump_dwh == True
 
 - name: set facts for dwh variables
   set_fact:
@@ -35,10 +42,10 @@
       {{
         ovirt_engine_db_dump_dwh_db |
         combine(
-          dict([ [item.partition('=')[0], item.partition('=')[2]|regex_replace('\"', '')] ])
+          dict([ [item.partition('=')[0], item.partition('=')[2] | regex_replace('\"', '')] ])
         )
       }}
-  with_items: "{{ cmd.stdout_lines|list }}"
+  with_items: "{{ decoded_content }}"
   when: ovirt_engine_db_dump_dwh == True
 
 # stop engine and dwh services that it won't generate more data to database
@@ -58,43 +65,28 @@
     regexp: '^Defaults *requiretty$'
     line: 'Defaults    !requiretty'
 
-- name: get postgres path
-  become: yes
-  become_user: postgres
-  shell: echo $HOME
-  register: pgpath
-  tags:
-    - skip_ansible_lint
+- name: process postgres actions
+  include_tasks: postgres_dump.yml
+  when:
+    - ovirt_engine_version < '4.2'
+
+- name: process postgres 9.5 actions
+  include_tasks: postgres95_dump.yml
+  when:
+    - ovirt_engine_version >= '4.2'
 
 - name: create local dir
   local_action:
     file path={{ ovirt_engine_db_dump_local_dir }} state=directory
 
-- name: get dump of engine database
-  become: yes
-  become_user: postgres
-  postgresql_db:
-    name: "{{ ovirt_engine_db_dump_engine_db['ENGINE_DB_DATABASE'] }}"
-    target: "{{ pgpath.stdout }}/engine.sql"
-    state: dump
-
-- name: get dump of dwh database
-  become: yes
-  become_user: postgres
-  postgresql_db:
-    name: "{{ ovirt_engine_db_dump_dwh_db['DWH_DB_DATABASE'] }}"
-    target: "{{ pgpath.stdout }}/dwh.sql"
-    state: dump
-  when: ovirt_engine_db_dump_dwh == True
-
 # print variables to file
 - name: print engine variables to file
   local_action:
-        copy content="{{ ovirt_engine_db_dump_engine_db }}" dest="{{ ovirt_engine_db_dump_local_dir }}/engine_variables.json"
+        copy content="{{ ovirt_engine_db_dump_engine_db | to_nice_yaml }}" dest="{{ ovirt_engine_db_dump_local_dir }}/engine_variables.yaml"
 
 - name: print DWH variables to file
   local_action:
-        copy content="{{ ovirt_engine_db_dump_dwh_db }}" dest="{{ ovirt_engine_db_dump_local_dir }}/dwh_variables.json"
+        copy content="{{ ovirt_engine_db_dump_dwh_db | to_nice_yaml }}" dest="{{ ovirt_engine_db_dump_local_dir }}/dwh_variables.yaml"
   when: ovirt_engine_db_dump_dwh == True
 
 # copy files to localhost

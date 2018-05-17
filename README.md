@@ -1,6 +1,8 @@
 oVirt Engine dump
 =================
 
+This role gets oVirt engine and DWH DB dump.
+
 - get DB variables (database, user, password, ...)
 - get dump of engine and dwh database
 
@@ -22,6 +24,7 @@ Role Variables
 ovirt_engine_db_dump_dwh: [True, False] Dump also DWH database (default: False)
 ovirt_engine_db_dump_start_services: [True, False] Start engine and DWH service after dump (default: True)
 ovirt_engine_db_dump_local_dir: directory on local machine where to store files (default: engine_dump in playbook directory)  
+ovirt_engine_version: oVirt engine X.Y version
 ```
 
 Dependencies
@@ -37,8 +40,9 @@ Example Playbook
 - hosts: engine
   vars:
     ovirt_engine_db_dump_dwh: True
+    ovirt_engine_version: "4.2"
   roles:
-    - ovirt-engine-db-dump
+    - ansible-role-ovirt-dump-db
 ```
 
 Author Information
